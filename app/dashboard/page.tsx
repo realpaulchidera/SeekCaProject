@@ -16,7 +16,7 @@ export default function Dashboard() {
         const { data: { user } } = await supabase.auth.getUser()
         
         if (!user) {
-          router.push('/auth/login')
+          window.location.replace('/auth/login')
           return
         }
 
@@ -32,14 +32,14 @@ export default function Dashboard() {
           setProfile(data)
           // Redirect to role-specific dashboard
           if (data.role === 'professional') {
-            router.push('/dashboard/professional')
+            window.location.replace('/dashboard/professional')
           } else {
-            router.push('/dashboard/hirer')
+            window.location.replace('/dashboard/hirer')
           }
         }
       } catch (error) {
         console.error('Error:', error)
-        router.push('/auth/login')
+        window.location.replace('/auth/login')
       } finally {
         setLoading(false)
       }
