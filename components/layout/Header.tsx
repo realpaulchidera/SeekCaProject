@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { NotificationCenter } from '@/components/ui/notification-center'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -107,7 +108,9 @@ export default function Header() {
           {/* Desktop Auth */}
           <div className="hidden md:flex items-center space-x-4">
             {user ? (
-              <DropdownMenu>
+              <>
+                <NotificationCenter userId={user.id} />
+                <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                     <Avatar className="h-8 w-8">
@@ -153,6 +156,7 @@ export default function Header() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </>
             ) : (
               <div className="flex items-center space-x-4">
                 <Link href="/auth/login">
