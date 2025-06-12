@@ -89,23 +89,17 @@ export default function HirerDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Link href="/post-job">
-            <Button className="h-20 w-full flex flex-col items-center justify-center space-y-2">
-              <Plus className="h-6 w-6" />
-              <span>Post New Job</span>
-            </Button>
-          </Link>
-          <Link href="/browse">
-            <Button variant="outline" className="h-20 w-full flex flex-col items-center justify-center space-y-2">
-              <Search className="h-6 w-6" />
-              <span>Browse Professionals</span>
-            </Button>
-          </Link>
-          <Link href="/dashboard/hirer/jobs">
+        <div className="flex space-x-4">
+          <Link href="/profile/edit">
             <Button variant="outline" className="h-20 w-full flex flex-col items-center justify-center space-y-2">
               <Briefcase className="h-6 w-6" />
               <span>Manage Jobs</span>
+            </Button>
+          </Link>
+          <Link href="/onboarding">
+            <Button variant="outline" className="h-20 w-full flex flex-col items-center justify-center space-y-2">
+              <TrendingUp className="h-6 w-6" />
+              <span>Complete Profile</span>
             </Button>
           </Link>
           <Link href="/dashboard/hirer/messages">

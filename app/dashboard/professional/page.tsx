@@ -105,16 +105,16 @@ export default function ProfessionalDashboard() {
               <span>Edit Profile</span>
             </Button>
           </Link>
+          <Link href="/onboarding">
+            <Button variant="outline" className="h-20 w-full flex flex-col items-center justify-center space-y-2">
+              <TrendingUp className="h-6 w-6" />
+              <span>Complete Profile</span>
+            </Button>
+          </Link>
           <Link href="/dashboard/professional/applications">
             <Button variant="outline" className="h-20 w-full flex flex-col items-center justify-center space-y-2">
               <MessageSquare className="h-6 w-6" />
               <span>Applications</span>
-            </Button>
-          </Link>
-          <Link href="/dashboard/professional/earnings">
-            <Button variant="outline" className="h-20 w-full flex flex-col items-center justify-center space-y-2">
-              <DollarSign className="h-6 w-6" />
-              <span>Earnings</span>
             </Button>
           </Link>
         </div>
@@ -153,9 +153,9 @@ export default function ProfessionalDashboard() {
                   </div>
                   {!profile.is_verified && (
                     <div className="mt-4">
-                      <Link href="/kyc">
+                      <Link href="/onboarding">
                         <Button size="sm">
-                          Complete Verification
+                          Complete Profile Setup
                         </Button>
                       </Link>
                     </div>
