@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,10 +24,15 @@ import {
   Award,
   CheckCircle
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { jobQueries } from '@/lib/database'
 
 export default function PostJob() {
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
   const [jobTitle, setJobTitle] = useState('')
-  const [company, setCompany] = useState('')
   const [location, setLocation] = useState('')
   const [jobType, setJobType] = useState('full-time')
   const [salaryType, setSalaryType] = useState('hourly')
@@ -39,8 +44,46 @@ export default function PostJob() {
   const [skills, setSkills] = useState([''])
   const [licenses, setLicenses] = useState([''])
   const [isUrgent, setIsUrgent] = useState(false)
+  const [remoteAllowed, setRemoteAllowed] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) {
+          router.push('/auth/login')
+          return
+        }
+
+        setUser(user)
+
+        // Get user profile
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+
+        if (error) {
+          console.error('Error fetching profile:', error)
+        } else {
+          setProfile(profileData)
+          if (profileData.role !== 'hirer') {
+            router.push('/dashboard/professional')
+          }
+        }
+      } catch (error) {
+        console.error('Error:', error)
+        router.push('/auth/login')
+      }
+    }
+
+    getUser()
+  }, [router])
 
   const categories = [
     { id: 'engineering', name: 'Engineering', icon: Zap },
@@ -80,13 +123,48 @@ export default function PostJob() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
     setIsLoading(true)
 
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Validate required fields
+      if (!jobTitle || !description || !category || !jobType || !salaryType) {
+        setError('Please fill in all required fields')
+        setIsLoading(false)
+        return
+      }
+
+      // Filter out empty values
+      const filteredRequirements = requirements.filter(req => req.trim() !== '')
+      const filteredSkills = skills.filter(skill => skill.trim() !== '')
+      const filteredLicenses = licenses.filter(license => license.trim() !== '')
+
+      const jobData = {
+        hirer_id: user.id,
+        title: jobTitle,
+        description,
+        category,
+        job_type: jobType,
+        location: location || null,
+        remote_allowed: remoteAllowed,
+        salary_type: salaryType,
+        salary_min: salaryMin ? parseFloat(salaryMin) : null,
+        salary_max: salaryMax ? parseFloat(salaryMax) : null,
+        required_skills: filteredSkills,
+        required_licenses: filteredLicenses,
+        requirements: filteredRequirements,
+        is_urgent: isUrgent,
+        status: 'active' // Automatically publish the job
+      }
+
+      await jobQueries.createJob(jobData)
       setSuccess(true)
+    } catch (error: any) {
+      console.error('Error creating job:', error)
+      setError(error.message || 'Failed to create job posting')
+    } finally {
       setIsLoading(false)
-    }, 2000)
+    }
   }
 
   if (success) {
@@ -139,6 +217,12 @@ export default function PostJob() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           {/* Basic Information */}
           <Card>
             <CardHeader>
@@ -162,27 +246,16 @@ export default function PostJob() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="company">Company Name *</Label>
-                  <Input
-                    id="company"
-                    placeholder="Your company name"
-                    value={company}
-                    onChange={(e) => setCompany(e.target.value)}
-                    required
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="location">Location *</Label>
+                  <Label htmlFor="location">Location</Label>
                   <Input
                     id="location"
-                    placeholder="e.g., Los Angeles, CA"
+                    placeholder="e.g., Los Angeles, CA (leave blank for remote)"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    required
                   />
                 </div>
                 <div className="space-y-3">
@@ -236,6 +309,18 @@ export default function PostJob() {
                     )
                   })}
                 </div>
+              </div>
+
+              {/* Remote Work Option */}
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="remote"
+                  checked={remoteAllowed}
+                  onChange={(e) => setRemoteAllowed(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Label htmlFor="remote">Remote work allowed</Label>
               </div>
             </CardContent>
           </Card>
@@ -472,11 +557,11 @@ export default function PostJob() {
 
           {/* Submit */}
           <div className="flex justify-end space-x-4">
-            <Button type="button" variant="outline">
+            <Button type="button" variant="outline" disabled={isLoading}>
               Save as Draft
             </Button>
             <Button type="submit" disabled={isLoading} className="min-w-[120px]">
-              {isLoading ? 'Posting...' : 'Post Job'}
+              {isLoading ? 'Publishing...' : 'Publish Job'}
             </Button>
           </div>
         </form>

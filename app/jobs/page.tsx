@@ -22,10 +22,15 @@ import {
   Award
 } from 'lucide-react'
 import Link from 'next/link'
+import { jobQueries, Job } from '@/lib/database'
+import { supabase } from '@/lib/supabase'
 
 export default function JobsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
 
   // Technical and skilled professional job categories
   const categories = [
@@ -38,24 +43,6 @@ export default function JobsPage() {
     { id: 'services', name: 'Personal Services', count: 1, icon: Truck }
   ]
 
-  // Mock job data focused on technical professionals
-  const jobs = [
-    {
-      id: 1,
-      title: 'Licensed Electrical Engineer - Commercial Projects',
-      company: 'PowerTech Engineering',
-      location: 'Los Angeles, CA',
-      type: 'Full-time',
-      salary: '$95,000 - $130,000',
-      description: 'Seeking a licensed PE to design electrical systems for commercial buildings. Must have experience with power distribution, lighting design, and code compliance.',
-      skills: ['Electrical Design', 'AutoCAD', 'Power Systems', 'NEC Code', 'PE License Required'],
-      postedAt: '2 days ago',
-      applicants: 8,
-      rating: 4.8,
-      category: 'engineering',
-      urgent: false,
-      verified: true,
-      requirements: ['PE License', '5+ years experience', 'Commercial projects']
     },
     {
       id: 2,
@@ -242,19 +229,79 @@ export default function JobsPage() {
       category: 'real-estate',
       urgent: false,
       verified: true,
-      requirements: ['Real Estate License', 'Commercial experience', 'Property management software']
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
     }
-  ]
+    getUser()
+  }, [])
+
+  useEffect(() => {
+    const fetchJobs = async () => {
+      try {
+        setLoading(true)
+        const filters: any = {}
+        
+        if (selectedCategory !== 'all') {
+          filters.category = selectedCategory
+        }
+        
+        if (searchTerm) {
+          filters.search = searchTerm
+        }
+        
+        const jobsData = await jobQueries.getActiveJobs(filters)
+        setJobs(jobsData)
+      } catch (error) {
+        console.error('Error fetching jobs:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchJobs()
+  }, [selectedCategory, searchTerm])
 
   const filteredJobs = jobs.filter(job => {
-    const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.skills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
+    const matchesSearch = searchTerm === '' || 
+                         job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         job.required_skills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
     
     const matchesCategory = selectedCategory === 'all' || job.category === selectedCategory
     
     return matchesSearch && matchesCategory
   })
+
+  const formatSalary = (job: Job) => {
+    const min = job.salary_min ? `$${job.salary_min.toLocaleString()}` : ''
+    const max = job.salary_max ? `$${job.salary_max.toLocaleString()}` : ''
+    const type = job.salary_type === 'hourly' ? '/hr' : job.salary_type === 'salary' ? '/year' : ''
+    
+    if (min && max) {
+      return `${min} - ${max}${type}`
+    } else if (min) {
+      return `${min}+${type}`
+    } else if (max) {
+      return `Up to ${max}${type}`
+    }
+    return 'Salary not specified'
+  }
+
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
+    
+    if (diffInHours < 1) return 'Just posted'
+    if (diffInHours < 24) return `${diffInHours} hours ago`
+    
+    const diffInDays = Math.floor(diffInHours / 24)
+    if (diffInDays < 7) return `${diffInDays} days ago`
+    
+    const diffInWeeks = Math.floor(diffInDays / 7)
+    return `${diffInWeeks} weeks ago`
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -393,7 +440,7 @@ export default function JobsPage() {
           <div className="lg:col-span-3">
             <div className="mb-4 flex items-center justify-between">
               <p className="text-gray-600">
-                Showing {filteredJobs.length} of {jobs.length} jobs
+                {loading ? 'Loading...' : `Showing ${filteredJobs.length} of ${jobs.length} jobs`}
               </p>
               <select className="border border-gray-300 rounded-md px-3 py-1 text-sm">
                 <option>Most Recent</option>
@@ -404,80 +451,121 @@ export default function JobsPage() {
               </select>
             </div>
 
-            <div className="space-y-6">
-              {filteredJobs.map((job) => (
-                <Card key={job.id} className="hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <h3 className="text-xl font-semibold text-gray-900">{job.title}</h3>
-                          <Badge variant="outline">{job.type}</Badge>
-                          {job.urgent && (
-                            <Badge variant="destructive" className="bg-red-100 text-red-800">
-                              Urgent
-                            </Badge>
-                          )}
-                          {job.verified && (
-                            <Award className="h-4 w-4 text-blue-600" />
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-4 text-gray-600 mb-3">
-                          <div className="flex items-center">
-                            <Building className="h-4 w-4 mr-1" />
-                            {job.company}
-                          </div>
-                          <div className="flex items-center">
-                            <MapPin className="h-4 w-4 mr-1" />
-                            {job.location}
-                          </div>
-                          <div className="flex items-center">
-                            <Clock className="h-4 w-4 mr-1" />
-                            {job.postedAt}
-                          </div>
-                        </div>
-                        <p className="text-gray-700 mb-4">{job.description}</p>
-                        
-                        {/* Requirements */}
-                        <div className="mb-4">
-                          <p className="text-sm font-medium text-gray-900 mb-2">Requirements:</p>
-                          <div className="flex flex-wrap gap-2">
-                            {job.requirements.map((req, index) => (
-                              <Badge key={index} variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                {req}
+            {loading ? (
+              <div className="space-y-6">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} className="animate-pulse">
+                    <CardContent className="p-6">
+                      <div className="h-6 bg-gray-200 rounded mb-4"></div>
+                      <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                      <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                      <div className="flex space-x-2">
+                        <div className="h-6 bg-gray-200 rounded w-16"></div>
+                        <div className="h-6 bg-gray-200 rounded w-16"></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {filteredJobs.map((job: any) => (
+                  <Card key={job.id} className="hover:shadow-lg transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <h3 className="text-xl font-semibold text-gray-900">{job.title}</h3>
+                            <Badge variant="outline" className="capitalize">{job.job_type.replace('-', ' ')}</Badge>
+                            {job.is_urgent && (
+                              <Badge variant="destructive" className="bg-red-100 text-red-800">
+                                Urgent
                               </Badge>
-                            ))}
+                            )}
+                            {job.profiles?.is_verified && (
+                              <Award className="h-4 w-4 text-blue-600" />
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-4 text-gray-600 mb-3">
+                            <div className="flex items-center">
+                              <Building className="h-4 w-4 mr-1" />
+                              {job.profiles?.company_name || 'Company'}
+                            </div>
+                            <div className="flex items-center">
+                              <MapPin className="h-4 w-4 mr-1" />
+                              {job.location || 'Remote'}
+                            </div>
+                            <div className="flex items-center">
+                              <Clock className="h-4 w-4 mr-1" />
+                              {getTimeAgo(job.created_at)}
+                            </div>
+                          </div>
+                          <p className="text-gray-700 mb-4">{job.description}</p>
+                          
+                          {/* Requirements */}
+                          {job.requirements && job.requirements.length > 0 && (
+                            <div className="mb-4">
+                              <p className="text-sm font-medium text-gray-900 mb-2">Requirements:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {job.requirements.map((req: string, index: number) => (
+                                  <Badge key={index} variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                    {req}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Skills */}
+                          {job.required_skills && job.required_skills.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              {job.required_skills.map((skill: string, index: number) => (
+                                <Badge key={index} variant="secondary" className="text-xs">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Licenses */}
+                          {job.required_licenses && job.required_licenses.length > 0 && (
+                            <div className="mb-4">
+                              <p className="text-sm font-medium text-gray-900 mb-2">Required Licenses:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {job.required_licenses.map((license: string, index: number) => (
+                                  <Badge key={index} variant="outline" className="text-xs bg-green-50 text-green-700">
+                                    {license}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="ml-6 text-right">
+                          <p className="text-lg font-semibold text-green-600 mb-2">{formatSalary(job)}</p>
+                          <p className="text-sm text-gray-600 mb-4">{job.application_count} applicants</p>
+                          <p className="text-sm text-gray-600 mb-4">{job.view_count} views</p>
+                          <div className="space-y-2">
+                            {user ? (
+                              <>
+                                <Button className="w-full">Apply Now</Button>
+                                <Button variant="outline" size="sm" className="w-full">
+                                  Save Job
+                                </Button>
+                              </>
+                            ) : (
+                              <Link href="/auth/login">
+                                <Button className="w-full">Sign in to Apply</Button>
+                              </Link>
+                            )}
                           </div>
                         </div>
-
-                        {/* Skills */}
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {job.skills.map((skill, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {skill}
-                            </Badge>
-                          ))}
-                        </div>
                       </div>
-                      <div className="ml-6 text-right">
-                        <div className="flex items-center mb-2">
-                          <Star className="h-4 w-4 text-yellow-400 mr-1" />
-                          <span className="text-sm font-medium">{job.rating}</span>
-                        </div>
-                        <p className="text-lg font-semibold text-green-600 mb-2">{job.salary}</p>
-                        <p className="text-sm text-gray-600 mb-4">{job.applicants} applicants</p>
-                        <div className="space-y-2">
-                          <Button className="w-full">Apply Now</Button>
-                          <Button variant="outline" size="sm" className="w-full">
-                            Save Job
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
 
             {filteredJobs.length === 0 && (
               <Card>
@@ -498,7 +586,7 @@ export default function JobsPage() {
             )}
 
             {/* Load More */}
-            {filteredJobs.length > 0 && (
+            {!loading && filteredJobs.length > 0 && (
               <div className="mt-8 text-center">
                 <Button variant="outline" size="lg">
                   Load More Jobs

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,12 +25,17 @@ import {
   Building,
   Truck
 } from 'lucide-react'
+import { professionalQueries } from '@/lib/database'
+import { supabase } from '@/lib/supabase'
 
 export default function BrowseProfessionals() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [selectedLocation, setSelectedLocation] = useState('all')
   const [selectedExperience, setSelectedExperience] = useState('all')
+  const [professionals, setProfessionals] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
 
   const categories = [
     { id: 'all', name: 'All Categories', icon: Briefcase },
@@ -61,26 +66,6 @@ export default function BrowseProfessionals() {
     { id: 'expert', name: 'Expert Level (15+ years)' }
   ]
 
-  // Mock data for technical professionals
-  const professionals = [
-    {
-      id: 1,
-      name: 'Robert Martinez',
-      title: 'Licensed Electrical Engineer',
-      location: 'Los Angeles, CA',
-      hourlyRate: 125,
-      rating: 4.9,
-      reviewCount: 89,
-      completedProjects: 156,
-      responseTime: '2 hours',
-      avatar: '',
-      skills: ['Electrical Systems', 'Power Distribution', 'Industrial Controls', 'Code Compliance'],
-      description: 'Licensed Professional Engineer with 12+ years experience in electrical system design, power distribution, and industrial automation. Specialized in commercial and industrial projects.',
-      verified: true,
-      availability: 'Available',
-      category: 'engineering',
-      license: 'PE License #12345',
-      certifications: ['IEEE Member', 'NECA Certified']
     },
     {
       id: 2,
@@ -213,16 +198,44 @@ export default function BrowseProfessionals() {
       availability: 'Available',
       category: 'engineering',
       license: 'SE License #11223',
-      certifications: ['AISC Certified', 'ICC Certified']
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
     }
-  ]
+    getUser()
+  }, [])
+
+  useEffect(() => {
+    const fetchProfessionals = async () => {
+      try {
+        setLoading(true)
+        const filters: any = {}
+        
+        if (searchQuery) {
+          filters.search = searchQuery
+        }
+        
+        const professionalsData = await professionalQueries.getProfessionals(filters)
+        setProfessionals(professionalsData)
+      } catch (error) {
+        console.error('Error fetching professionals:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchProfessionals()
+  }, [searchQuery, selectedCategory])
 
   const filteredProfessionals = professionals.filter(professional => {
-    const matchesSearch = professional.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         professional.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         professional.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()))
+    const matchesSearch = searchQuery === '' ||
+                         professional.profiles?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         professional.profiles?.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         professional.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         professional.skills?.some((skill: string) => skill.toLowerCase().includes(searchQuery.toLowerCase()))
     
-    const matchesCategory = selectedCategory === 'all' || professional.category === selectedCategory
+    const matchesCategory = selectedCategory === 'all' // We'll implement category filtering later
     
     return matchesSearch && matchesCategory
   })
@@ -231,9 +244,10 @@ export default function BrowseProfessionals() {
     return name.split(' ').map(n => n[0]).join('')
   }
 
-  const getCategoryIcon = (categoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId)
-    return category ? category.icon : Briefcase
+  const getFullName = (professional: any) => {
+    const firstName = professional.profiles?.first_name || ''
+    const lastName = professional.profiles?.last_name || ''
+    return `${firstName} ${lastName}`.trim() || 'Professional'
   }
 
   return (
@@ -408,7 +422,7 @@ export default function BrowseProfessionals() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <p className="text-gray-600">
-                  Showing {filteredProfessionals.length} of {professionals.length} professionals
+                  {loading ? 'Loading...' : `Showing ${filteredProfessionals.length} of ${professionals.length} professionals`}
                 </p>
               </div>
               <div className="flex items-center space-x-2">
@@ -425,18 +439,38 @@ export default function BrowseProfessionals() {
             </div>
 
             {/* Professional Cards */}
-            <div className="space-y-6">
-              {filteredProfessionals.map(professional => {
-                const CategoryIcon = getCategoryIcon(professional.category)
-                return (
+            {loading ? (
+              <div className="space-y-6">
+                {[1, 2, 3].map((i) => (
+                  <Card key={i} className="animate-pulse">
+                    <CardContent className="p-6">
+                      <div className="flex items-start space-x-4">
+                        <div className="h-16 w-16 bg-gray-200 rounded-full"></div>
+                        <div className="flex-1">
+                          <div className="h-6 bg-gray-200 rounded mb-2"></div>
+                          <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                          <div className="h-4 bg-gray-200 rounded mb-4"></div>
+                          <div className="flex space-x-2">
+                            <div className="h-6 bg-gray-200 rounded w-16"></div>
+                            <div className="h-6 bg-gray-200 rounded w-16"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {filteredProfessionals.map(professional => (
                   <Card key={professional.id} className="hover:shadow-lg transition-shadow">
                     <CardContent className="p-6">
                       <div className="flex items-start space-x-4">
                         {/* Avatar */}
                         <Avatar className="h-16 w-16">
-                          <AvatarImage src={professional.avatar} alt={professional.name} />
+                          <AvatarImage src={professional.profiles?.avatar_url} alt={getFullName(professional)} />
                           <AvatarFallback className="bg-blue-100 text-blue-700 text-lg font-medium">
-                            {getInitials(professional.name)}
+                            {getInitials(getFullName(professional))}
                           </AvatarFallback>
                         </Avatar>
 
@@ -446,110 +480,174 @@ export default function BrowseProfessionals() {
                             <div>
                               <div className="flex items-center space-x-2 mb-1">
                                 <h3 className="text-xl font-semibold text-gray-900">
-                                  {professional.name}
+                                  {getFullName(professional)}
                                 </h3>
-                                {professional.verified && (
+                                {professional.profiles?.is_verified && (
                                   <Award className="h-5 w-5 text-blue-600" />
                                 )}
                                 <Badge 
-                                  variant={professional.availability === 'Available' ? 'default' : 'secondary'}
-                                  className={professional.availability === 'Available' ? 'bg-green-100 text-green-800' : ''}
+                                  variant={professional.availability_status === 'available' ? 'default' : 'secondary'}
+                                  className={professional.availability_status === 'available' ? 'bg-green-100 text-green-800' : ''}
                                 >
-                                  {professional.availability}
+                                  {professional.availability_status === 'available' ? 'Available' : 
+                                   professional.availability_status === 'busy' ? 'Busy' : 'Unavailable'}
                                 </Badge>
                               </div>
                               <div className="flex items-center space-x-2 mb-2">
-                                <CategoryIcon className="h-4 w-4 text-gray-600" />
-                                <p className="text-lg text-gray-700">{professional.title}</p>
+                                <Briefcase className="h-4 w-4 text-gray-600" />
+                                <p className="text-lg text-gray-700">{professional.title || 'Professional'}</p>
                               </div>
                               <div className="flex items-center space-x-4 text-sm text-gray-600 mb-2">
                                 <div className="flex items-center">
                                   <MapPin className="h-4 w-4 mr-1" />
-                                  {professional.location}
+                                  {professional.profiles?.location || 'Location not specified'}
                                 </div>
-                                <div className="flex items-center">
-                                  <DollarSign className="h-4 w-4 mr-1" />
-                                  ${professional.hourlyRate}/hr
-                                </div>
+                                {professional.hourly_rate && (
+                                  <div className="flex items-center">
+                                    <DollarSign className="h-4 w-4 mr-1" />
+                                    ${professional.hourly_rate}/hr
+                                  </div>
+                                )}
                                 <div className="flex items-center">
                                   <Clock className="h-4 w-4 mr-1" />
-                                  Responds in {professional.responseTime}
+                                  Responds in {professional.response_time_hours || 24} hours
                                 </div>
                               </div>
-                              {/* License & Certifications */}
-                              <div className="flex items-center space-x-2 mb-3">
-                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                  {professional.license}
-                                </Badge>
-                                {professional.certifications.map(cert => (
-                                  <Badge key={cert} variant="outline" className="text-xs">
-                                    {cert}
-                                  </Badge>
-                                ))}
-                              </div>
+                              
+                              {/* Licenses & Certifications */}
+                              {professional.licenses && professional.licenses.length > 0 && (
+                                <div className="flex items-center space-x-2 mb-3">
+                                  {professional.licenses.slice(0, 3).map((license: string, index: number) => (
+                                    <Badge key={index} variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                      {license}
+                                    </Badge>
+                                  ))}
+                                  {professional.licenses.length > 3 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{professional.licenses.length - 3} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* Certifications */}
+                              {professional.certifications && professional.certifications.length > 0 && (
+                                <div className="flex items-center space-x-2 mb-3">
+                                  {professional.certifications.slice(0, 2).map((cert: string, index: number) => (
+                                    <Badge key={index} variant="outline" className="text-xs">
+                                      {cert}
+                                    </Badge>
+                                  ))}
+                                  {professional.certifications.length > 2 && (
+                                    <Badge variant="outline" className="text-xs">
+                                      +{professional.certifications.length - 2} more
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             {/* Rating and Stats */}
                             <div className="text-right">
                               <div className="flex items-center space-x-1 mb-2">
                                 <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                                <span className="font-medium">{professional.rating}</span>
-                                <span className="text-gray-600 text-sm">({professional.reviewCount})</span>
+                                <span className="font-medium">{professional.rating || '0.0'}</span>
+                                <span className="text-gray-600 text-sm">({professional.total_reviews || 0})</span>
                               </div>
                               <p className="text-sm text-gray-600">
-                                {professional.completedProjects} projects completed
+                                {professional.completed_projects || 0} projects completed
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                {professional.experience_years || 0} years experience
                               </p>
                             </div>
                           </div>
 
-                          {/* Description */}
-                          <p className="text-gray-700 mb-4">
-                            {professional.description}
-                          </p>
+                          {/* Bio */}
+                          {professional.profiles?.bio && (
+                            <p className="text-gray-700 mb-4">
+                              {professional.profiles.bio}
+                            </p>
+                          )}
 
                           {/* Skills */}
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            {professional.skills.map(skill => (
-                              <Badge key={skill} variant="outline" className="text-xs">
-                                {skill}
-                              </Badge>
-                            ))}
-                          </div>
+                          {professional.skills && professional.skills.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-4">
+                              {professional.skills.slice(0, 8).map((skill: string, index: number) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {skill}
+                                </Badge>
+                              ))}
+                              {professional.skills.length > 8 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{professional.skills.length - 8} more
+                                </Badge>
+                              )}
+                            </div>
+                          )}
 
                           {/* Actions */}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-4">
-                              <Button size="sm">
-                                <MessageSquare className="h-4 w-4 mr-2" />
-                                Contact
-                              </Button>
-                              <Button variant="outline" size="sm">
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Profile
-                              </Button>
-                              <Button variant="ghost" size="sm">
-                                <Heart className="h-4 w-4 mr-2" />
-                                Save
-                              </Button>
+                              {user ? (
+                                <>
+                                  <Button size="sm">
+                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                    Contact
+                                  </Button>
+                                  <Button variant="outline" size="sm">
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    View Profile
+                                  </Button>
+                                  <Button variant="ghost" size="sm">
+                                    <Heart className="h-4 w-4 mr-2" />
+                                    Save
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button size="sm" onClick={() => window.location.href = '/auth/login'}>
+                                  Sign in to Contact
+                                </Button>
+                              )}
                             </div>
                             <div className="text-sm text-gray-600">
-                              Last active: 2 hours ago
+                              Member since {new Date(professional.created_at).getFullYear()}
                             </div>
                           </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Load More */}
-            <div className="mt-8 text-center">
-              <Button variant="outline" size="lg">
-                Load More Professionals
-              </Button>
-            </div>
+            {!loading && filteredProfessionals.length > 0 && (
+              <div className="mt-8 text-center">
+                <Button variant="outline" size="lg">
+                  Load More Professionals
+                </Button>
+              </div>
+            )}
+
+            {!loading && filteredProfessionals.length === 0 && (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No professionals found</h3>
+                  <p className="text-gray-600 mb-4">
+                    Try adjusting your search criteria or browse all available professionals.
+                  </p>
+                  <Button onClick={() => {
+                    setSearchQuery('')
+                    setSelectedCategory('all')
+                  }}>
+                    Clear Filters
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
