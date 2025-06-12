@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { FileUpload, FileDisplay } from '@/components/ui/file-upload'
 import { 
   MapPin, 
   Clock, 
@@ -23,10 +24,12 @@ import {
   Heart,
   Share,
   ArrowLeft,
-  CheckCircle
+  CheckCircle,
+  Paperclip
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { jobQueries, applicationQueries } from '@/lib/database'
+import { fileUpload, UploadedFile } from '@/lib/file-upload'
 import Link from 'next/link'
 
 export default function JobDetailPage({ params }: { params: { id: string } }) {
@@ -46,6 +49,7 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
   const [proposedRate, setProposedRate] = useState('')
   const [estimatedDuration, setEstimatedDuration] = useState('')
   const [availabilityStart, setAvailabilityStart] = useState('')
+  const [applicationFiles, setApplicationFiles] = useState<UploadedFile[]>([])
 
   useEffect(() => {
     const fetchJobAndUser = async () => {
@@ -124,6 +128,11 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
       }
 
       await applicationQueries.createApplication(applicationData)
+      
+      // Attach files to application if any
+      for (const file of applicationFiles) {
+        await fileUpload.attachToApplication(file.id, applicationData.id)
+      }
       
       setSuccess('Application submitted successfully!')
       setApplicationSubmitted(true)
@@ -406,6 +415,20 @@ export default function JobDetailPage({ params }: { params: { id: string } }) {
                     />
                   </div>
 
+                  {/* File Upload */}
+                  <div className="space-y-2">
+                    <Label>Supporting Documents</Label>
+                    <p className="text-sm text-gray-600 mb-2">
+                      Upload your resume, portfolio, or other relevant documents
+                    </p>
+                    <FileUpload
+                      userId={user.id}
+                      folder="applications"
+                      maxFiles={5}
+                      onFileUploaded={(file) => setApplicationFiles(prev => [...prev, file])}
+                      onFileRemoved={(fileId) => setApplicationFiles(prev => prev.filter(f => f.id !== fileId))}
+                    />
+                  </div>
                   <div className="flex justify-end space-x-4">
                     <Button 
                       variant="outline" 
