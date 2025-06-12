@@ -462,6 +462,35 @@ export const dbUtils = {
     if (error) throw error
   },
 
+  async createConversationForApplication(applicationId: string, jobId: string, hirerId: string, professionalId: string) {
+    // Check if conversation already exists
+    const { data: existingConversation } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('job_id', jobId)
+      .eq('hirer_id', hirerId)
+      .eq('professional_id', professionalId)
+      .single()
+
+    if (existingConversation) {
+      return existingConversation
+    }
+
+    // Create new conversation
+    const { data, error } = await supabase
+      .from('conversations')
+      .insert({
+        job_id: jobId,
+        hirer_id: hirerId,
+        professional_id: professionalId
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
   async saveJob(userId: string, jobId: string) {
     const { data, error } = await supabase
       .from('saved_jobs')
