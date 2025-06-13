@@ -1,14 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { AdvancedSearch } from '@/components/ui/advanced-search'
+import { SavedSearches } from '@/components/ui/saved-searches'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
-  Search, 
-  Filter, 
   MapPin, 
   Star, 
   Clock,
@@ -25,7 +26,7 @@ import {
   Building,
   Truck
 } from 'lucide-react'
-import { professionalQueries } from '@/lib/database'
+import { searchService, ProfessionalSearchFilters } from '@/lib/search'
 import { supabase } from '@/lib/supabase'
 
 export default function BrowseProfessionals() {
@@ -35,6 +36,9 @@ export default function BrowseProfessionals() {
   const [selectedExperience, setSelectedExperience] = useState('all')
   const [professionals, setProfessionals] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [totalResults, setTotalResults] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [currentPage, setCurrentPage] = useState(0)
   const [user, setUser] = useState<any>(null)
 
   const categories = [
@@ -74,39 +78,70 @@ export default function BrowseProfessionals() {
     getUser()
   }, [])
 
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
   useEffect(() => {
-    const fetchProfessionals = async () => {
-      try {
-        setLoading(true)
-        const filters: any = {}
-        
-        if (searchQuery) {
-          filters.search = searchQuery
-        }
-        
-        const professionalsData = await professionalQueries.getProfessionals(filters)
-        setProfessionals(professionalsData)
-      } catch (error) {
-        console.error('Error fetching professionals:', error)
-      } finally {
-        setLoading(false)
+    // Load initial filters from URL
+    const initialFilters = searchService.buildProfessionalFiltersFromUrl(searchParams)
+    handleSearch(initialFilters)
+  }, [searchParams])
+
+  const handleSearch = async (filters: ProfessionalSearchFilters, page = 0) => {
+    try {
+      setLoading(true)
+      setCurrentPage(page)
+      
+      const searchFilters = {
+        ...filters,
+        limit: 20,
+        offset: page * 20
       }
+      
+      const result = await searchService.searchProfessionals(searchFilters)
+      
+      if (page === 0) {
+        setProfessionals(result.data)
+      } else {
+        setProfessionals(prev => [...prev, ...result.data])
+      }
+      
+      setTotalResults(result.total)
+      setHasMore(result.hasMore)
+      
+      // Log search analytics
+      if (user) {
+        await searchService.logSearch(user.id, 'professionals', filters.query || '', filters, result.data.length)
+      }
+    } catch (error) {
+      console.error('Error searching professionals:', error)
+    } finally {
+      setLoading(false)
     }
+  }
 
-    fetchProfessionals()
-  }, [searchQuery, selectedCategory])
+  const handleSaveSearch = async (name: string, filters: ProfessionalSearchFilters, enableAlert: boolean) => {
+    if (!user) return
+    
+    try {
+      await searchService.createSavedSearch(user.id, name, 'professionals', filters, enableAlert)
+      alert('Search saved successfully!')
+    } catch (error) {
+      console.error('Error saving search:', error)
+      alert('Failed to save search')
+    }
+  }
 
-  const filteredProfessionals = professionals.filter(professional => {
-    const matchesSearch = searchQuery === '' ||
-                         professional.profiles?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         professional.profiles?.last_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         professional.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         professional.skills?.some((skill: string) => skill.toLowerCase().includes(searchQuery.toLowerCase()))
-    
-    const matchesCategory = selectedCategory === 'all' // We'll implement category filtering later
-    
-    return matchesSearch && matchesCategory
-  })
+  const handleLoadMore = () => {
+    const currentFilters = searchService.buildProfessionalFiltersFromUrl(searchParams)
+    handleSearch(currentFilters, currentPage + 1)
+  }
+
+  const handleExecuteSavedSearch = (filters: ProfessionalSearchFilters) => {
+    // Update URL with new filters
+    const params = searchService.filtersToUrlParams(filters)
+    router.push(`/browse?${params.toString()}`)
+  }
 
   const getInitials = (name: string) => {
     return name.split(' ').map(n => n[0]).join('')
@@ -117,6 +152,8 @@ export default function BrowseProfessionals() {
     const lastName = professional.profiles?.last_name || ''
     return `${firstName} ${lastName}`.trim() || 'Professional'
   }
+
+  const currentFilters = searchService.buildProfessionalFiltersFromUrl(searchParams)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -130,6 +167,32 @@ export default function BrowseProfessionals() {
             Find licensed engineers, skilled tradespeople, and certified professionals for your projects
           </p>
         </div>
+
+        {/* Search Interface */}
+        <Tabs defaultValue="search" className="mb-8">
+          <TabsList>
+            <TabsTrigger value="search">Search Professionals</TabsTrigger>
+            {user && <TabsTrigger value="saved">Saved Searches</TabsTrigger>}
+          </TabsList>
+          
+          <TabsContent value="search">
+            <AdvancedSearch
+              searchType="professionals"
+              initialFilters={currentFilters}
+              onSearch={(filters) => handleSearch(filters, 0)}
+              onSaveSearch={user ? handleSaveSearch : undefined}
+            />
+          </TabsContent>
+          
+          {user && (
+            <TabsContent value="saved">
+              <SavedSearches
+                userId={user.id}
+                onSearchExecute={handleExecuteSavedSearch}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
 
         {/* Category Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
@@ -150,54 +213,6 @@ export default function BrowseProfessionals() {
               </Card>
             )
           })}
-        </div>
-
-        {/* Search and Filters */}
-        <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Search */}
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search by name, skills, or specialization..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            {/* Location Filter */}
-            <div>
-              <select
-                value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {locations.map(location => (
-                  <option key={location.id} value={location.id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Experience Filter */}
-            <div>
-              <select
-                value={selectedExperience}
-                onChange={(e) => setSelectedExperience(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {experienceLevels.map(level => (
-                  <option key={level.id} value={level.id}>
-                    {level.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -290,7 +305,7 @@ export default function BrowseProfessionals() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <p className="text-gray-600">
-                  {loading ? 'Loading...' : `Showing ${filteredProfessionals.length} of ${professionals.length} professionals`}
+                  {loading ? 'Loading...' : `Showing ${professionals.length} professionals${totalResults > professionals.length ? ` of ${totalResults}` : ''}`}
                 </p>
               </div>
               <div className="flex items-center space-x-2">
@@ -330,7 +345,7 @@ export default function BrowseProfessionals() {
               </div>
             ) : (
               <div className="space-y-6">
-                {filteredProfessionals.map(professional => (
+                {professionals.map((professional) => (
                   <Card key={professional.id} className="hover:shadow-lg transition-shadow">
                     <CardContent className="p-6">
                       <div className="flex items-start space-x-4">
@@ -345,6 +360,13 @@ export default function BrowseProfessionals() {
                         {/* Main Content */}
                         <div className="flex-1">
                           <div className="flex items-start justify-between">
+                            {/* Skill Match Score */}
+                            {professional.skill_match_score > 0 && (
+                              <Badge variant="default" className="mb-2 bg-green-100 text-green-800">
+                                {Math.round(professional.skill_match_score)}% skill match
+                              </Badge>
+                            )}
+                            
                             <div>
                               <div className="flex items-center space-x-2 mb-1">
                                 <h3 className="text-xl font-semibold text-gray-900">
@@ -490,16 +512,7 @@ export default function BrowseProfessionals() {
               </div>
             )}
 
-            {/* Load More */}
-            {!loading && filteredProfessionals.length > 0 && (
-              <div className="mt-8 text-center">
-                <Button variant="outline" size="lg">
-                  Load More Professionals
-                </Button>
-              </div>
-            )}
-
-            {!loading && filteredProfessionals.length === 0 && (
+            {!loading && professionals.length === 0 && (
               <Card>
                 <CardContent className="p-12 text-center">
                   <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -508,13 +521,21 @@ export default function BrowseProfessionals() {
                     Try adjusting your search criteria or browse all available professionals.
                   </p>
                   <Button onClick={() => {
-                    setSearchQuery('')
-                    setSelectedCategory('all')
+                    handleSearch({})
                   }}>
                     Clear Filters
                   </Button>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Load More */}
+            {!loading && hasMore && (
+              <div className="mt-8 text-center">
+                <Button variant="outline" size="lg" onClick={handleLoadMore}>
+                  Load More Professionals
+                </Button>
+              </div>
             )}
           </div>
         </div>

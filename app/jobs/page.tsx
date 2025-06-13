@@ -1,16 +1,17 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { AdvancedSearch } from '@/components/ui/advanced-search'
+import { SavedSearches } from '@/components/ui/saved-searches'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
-  Search, 
   MapPin, 
   Clock, 
   DollarSign,
-  Filter,
   Briefcase,
   Star,
   Building,
@@ -22,7 +23,8 @@ import {
   Award
 } from 'lucide-react'
 import Link from 'next/link'
-import { jobQueries, Job } from '@/lib/database'
+import { Job } from '@/lib/database'
+import { searchService, JobSearchFilters } from '@/lib/search'
 import { supabase } from '@/lib/supabase'
 
 export default function JobsPage() {
@@ -30,6 +32,9 @@ export default function JobsPage() {
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
+  const [totalResults, setTotalResults] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [currentPage, setCurrentPage] = useState(0)
   const [user, setUser] = useState<any>(null)
 
   // Technical and skilled professional job categories
@@ -51,41 +56,70 @@ export default function JobsPage() {
     getUser()
   }, [])
 
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
   useEffect(() => {
-    const fetchJobs = async () => {
-      try {
-        setLoading(true)
-        const filters: any = {}
-        
-        if (selectedCategory !== 'all') {
-          filters.category = selectedCategory
-        }
-        
-        if (searchTerm) {
-          filters.search = searchTerm
-        }
-        
-        const jobsData = await jobQueries.getActiveJobs(filters)
-        setJobs(jobsData)
-      } catch (error) {
-        console.error('Error fetching jobs:', error)
-      } finally {
-        setLoading(false)
+    // Load initial filters from URL
+    const initialFilters = searchService.buildJobFiltersFromUrl(searchParams)
+    handleSearch(initialFilters)
+  }, [searchParams])
+
+  const handleSearch = async (filters: JobSearchFilters, page = 0) => {
+    try {
+      setLoading(true)
+      setCurrentPage(page)
+      
+      const searchFilters = {
+        ...filters,
+        limit: 20,
+        offset: page * 20
       }
+      
+      const result = await searchService.searchJobs(searchFilters)
+      
+      if (page === 0) {
+        setJobs(result.data)
+      } else {
+        setJobs(prev => [...prev, ...result.data])
+      }
+      
+      setTotalResults(result.total)
+      setHasMore(result.hasMore)
+      
+      // Log search analytics
+      if (user) {
+        await searchService.logSearch(user.id, 'jobs', filters.query || '', filters, result.data.length)
+      }
+    } catch (error) {
+      console.error('Error searching jobs:', error)
+    } finally {
+      setLoading(false)
     }
+  }
 
-    fetchJobs()
-  }, [selectedCategory, searchTerm])
+  const handleSaveSearch = async (name: string, filters: JobSearchFilters, enableAlert: boolean) => {
+    if (!user) return
+    
+    try {
+      await searchService.createSavedSearch(user.id, name, 'jobs', filters, enableAlert)
+      alert('Search saved successfully!')
+    } catch (error) {
+      console.error('Error saving search:', error)
+      alert('Failed to save search')
+    }
+  }
 
-  const filteredJobs = jobs.filter(job => {
-    const matchesSearch = searchTerm === '' || 
-                         job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.required_skills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
-    
-    const matchesCategory = selectedCategory === 'all' || job.category === selectedCategory
-    
-    return matchesSearch && matchesCategory
-  })
+  const handleLoadMore = () => {
+    const currentFilters = searchService.buildJobFiltersFromUrl(searchParams)
+    handleSearch(currentFilters, currentPage + 1)
+  }
+
+  const handleExecuteSavedSearch = (filters: JobSearchFilters) => {
+    // Update URL with new filters
+    const params = searchService.filtersToUrlParams(filters)
+    router.push(`/jobs?${params.toString()}`)
+  }
 
   const formatSalary = (job: Job) => {
     const min = job.salary_min ? `$${job.salary_min.toLocaleString()}` : ''
@@ -117,6 +151,8 @@ export default function JobsPage() {
     return `${diffInWeeks} weeks ago`
   }
 
+  const currentFilters = searchService.buildJobFiltersFromUrl(searchParams)
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -126,46 +162,31 @@ export default function JobsPage() {
           <p className="text-gray-600">Find jobs for licensed engineers, skilled trades, project managers, and certified professionals</p>
         </div>
 
-        {/* Search and Filters */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-              <Input
-                placeholder="Search jobs, companies, licenses, or skills..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+        {/* Search Interface */}
+        <Tabs defaultValue="search" className="mb-8">
+          <TabsList>
+            <TabsTrigger value="search">Search Jobs</TabsTrigger>
+            {user && <TabsTrigger value="saved">Saved Searches</TabsTrigger>}
+          </TabsList>
+          
+          <TabsContent value="search">
+            <AdvancedSearch
+              searchType="jobs"
+              initialFilters={currentFilters}
+              onSearch={(filters) => handleSearch(filters, 0)}
+              onSaveSearch={user ? handleSaveSearch : undefined}
+            />
+          </TabsContent>
+          
+          {user && (
+            <TabsContent value="saved">
+              <SavedSearches
+                userId={user.id}
+                onSearchExecute={handleExecuteSavedSearch}
               />
-            </div>
-            <Button variant="outline" className="flex items-center">
-              <Filter className="mr-2 h-4 w-4" />
-              Advanced Filters
-            </Button>
-          </div>
-
-          {/* Category Tabs */}
-          <div className="flex flex-wrap gap-2">
-            {categories.map((category) => {
-              const IconComponent = category.icon
-              return (
-                <Button
-                  key={category.id}
-                  variant={selectedCategory === category.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedCategory(category.id)}
-                  className="flex items-center"
-                >
-                  <IconComponent className="mr-2 h-4 w-4" />
-                  {category.name}
-                  <Badge variant="secondary" className="ml-2 text-xs">
-                    {category.count}
-                  </Badge>
-                </Button>
-              )
-            })}
-          </div>
-        </div>
+            </TabsContent>
+          )}
+        </Tabs>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Sidebar */}
@@ -254,7 +275,7 @@ export default function JobsPage() {
           <div className="lg:col-span-3">
             <div className="mb-4 flex items-center justify-between">
               <p className="text-gray-600">
-                {loading ? 'Loading...' : `Showing ${filteredJobs.length} of ${jobs.length} jobs`}
+                {loading ? 'Loading...' : `Showing ${jobs.length} jobs${totalResults > jobs.length ? ` of ${totalResults}` : ''}`}
               </p>
               <select className="border border-gray-300 rounded-md px-3 py-1 text-sm">
                 <option>Most Recent</option>
@@ -283,7 +304,7 @@ export default function JobsPage() {
               </div>
             ) : (
               <div className="space-y-6">
-                {filteredJobs.map((job: any) => (
+                {jobs.map((job: any) => (
                   <Card key={job.id} className="hover:shadow-lg transition-shadow">
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between mb-4">
@@ -381,7 +402,7 @@ export default function JobsPage() {
               </div>
             )}
 
-            {filteredJobs.length === 0 && (
+            {!loading && jobs.length === 0 && (
               <Card>
                 <CardContent className="p-12 text-center">
                   <Briefcase className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -390,8 +411,7 @@ export default function JobsPage() {
                     Try adjusting your search criteria or browse all available positions.
                   </p>
                   <Button onClick={() => {
-                    setSearchTerm('')
-                    setSelectedCategory('all')
+                    handleSearch({})
                   }}>
                     Clear Filters
                   </Button>
@@ -400,9 +420,9 @@ export default function JobsPage() {
             )}
 
             {/* Load More */}
-            {!loading && filteredJobs.length > 0 && (
+            {!loading && hasMore && (
               <div className="mt-8 text-center">
-                <Button variant="outline" size="lg">
+                <Button variant="outline" size="lg" onClick={handleLoadMore}>
                   Load More Jobs
                 </Button>
               </div>
