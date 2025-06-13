@@ -1,54 +1,57 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { 
   Search, 
   Bell, 
-  Edit, 
+  BellOff, 
   Trash2, 
+  Edit, 
   Play,
-  Clock,
-  Briefcase,
-  Users
+  Calendar,
+  Filter
 } from 'lucide-react'
-import { SavedSearch, searchService } from '@/lib/search'
+import { searchService, SavedSearch } from '@/lib/search'
 
 interface SavedSearchesProps {
   userId: string
   onSearchExecute: (filters: any, searchType: 'jobs' | 'professionals') => void
-  className?: string
 }
 
-export function SavedSearches({ userId, onSearchExecute, className = '' }: SavedSearchesProps) {
+export function SavedSearches({ userId, onSearchExecute }: SavedSearchesProps) {
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadSavedSearches()
+    const loadSavedSearches = async () => {
+      try {
+        const searches = await searchService.getSavedSearches(userId)
+        setSavedSearches(searches)
+      } catch (error) {
+        console.error('Error loading saved searches:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (userId) {
+      loadSavedSearches()
+    }
   }, [userId])
 
-  const loadSavedSearches = async () => {
+  const handleToggleAlert = async (searchId: string, currentStatus: boolean) => {
     try {
-      const searches = await searchService.getSavedSearches(userId)
-      setSavedSearches(searches)
-    } catch (error) {
-      console.error('Error loading saved searches:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleToggleAlert = async (searchId: string, enabled: boolean) => {
-    try {
-      await searchService.updateSavedSearch(searchId, { is_alert_enabled: enabled })
+      await searchService.updateSavedSearch(searchId, {
+        is_alert_enabled: !currentStatus
+      })
+      
       setSavedSearches(prev => 
         prev.map(search => 
           search.id === searchId 
-            ? { ...search, is_alert_enabled: enabled }
+            ? { ...search, is_alert_enabled: !currentStatus }
             : search
         )
       )
@@ -58,13 +61,13 @@ export function SavedSearches({ userId, onSearchExecute, className = '' }: Saved
   }
 
   const handleDeleteSearch = async (searchId: string) => {
-    if (confirm('Are you sure you want to delete this saved search?')) {
-      try {
-        await searchService.deleteSavedSearch(searchId)
-        setSavedSearches(prev => prev.filter(search => search.id !== searchId))
-      } catch (error) {
-        console.error('Error deleting search:', error)
-      }
+    if (!confirm('Are you sure you want to delete this saved search?')) return
+
+    try {
+      await searchService.deleteSavedSearch(searchId)
+      setSavedSearches(prev => prev.filter(search => search.id !== searchId))
+    } catch (error) {
+      console.error('Error deleting saved search:', error)
     }
   }
 
@@ -72,56 +75,72 @@ export function SavedSearches({ userId, onSearchExecute, className = '' }: Saved
     onSearchExecute(search.criteria, search.search_type)
   }
 
-  const formatCriteria = (criteria: any, searchType: string) => {
+  const formatSearchCriteria = (criteria: any, searchType: string) => {
     const parts: string[] = []
     
     if (criteria.query) parts.push(`"${criteria.query}"`)
-    if (criteria.category) parts.push(criteria.category)
-    if (criteria.location) parts.push(criteria.location)
+    if (criteria.location) parts.push(`in ${criteria.location}`)
+    if (criteria.category) parts.push(`${criteria.category}`)
+    if (criteria.skills && criteria.skills.length > 0) {
+      parts.push(`skills: ${criteria.skills.slice(0, 2).join(', ')}${criteria.skills.length > 2 ? '...' : ''}`)
+    }
+    
     if (searchType === 'jobs') {
       if (criteria.jobType) parts.push(criteria.jobType)
       if (criteria.salaryMin || criteria.salaryMax) {
-        const salary = `$${criteria.salaryMin || '0'}-${criteria.salaryMax || '∞'}`
+        const salary = criteria.salaryMin && criteria.salaryMax 
+          ? `$${criteria.salaryMin}-${criteria.salaryMax}`
+          : criteria.salaryMin 
+            ? `$${criteria.salaryMin}+`
+            : `up to $${criteria.salaryMax}`
         parts.push(salary)
       }
     } else {
       if (criteria.hourlyRateMin || criteria.hourlyRateMax) {
-        const rate = `$${criteria.hourlyRateMin || '0'}-${criteria.hourlyRateMax || '∞'}/hr`
+        const rate = criteria.hourlyRateMin && criteria.hourlyRateMax 
+          ? `$${criteria.hourlyRateMin}-${criteria.hourlyRateMax}/hr`
+          : criteria.hourlyRateMin 
+            ? `$${criteria.hourlyRateMin}+/hr`
+            : `up to $${criteria.hourlyRateMax}/hr`
         parts.push(rate)
       }
+      if (criteria.availabilityStatus) parts.push(criteria.availabilityStatus)
     }
     
-    return parts.join(' • ')
+    return parts.join(' • ') || 'All results'
   }
 
-  const getSearchIcon = (searchType: string) => {
-    return searchType === 'jobs' ? Briefcase : Users
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffInDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24))
+    
+    if (diffInDays === 0) return 'Today'
+    if (diffInDays === 1) return 'Yesterday'
+    if (diffInDays < 7) return `${diffInDays} days ago`
+    if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} weeks ago`
+    return `${Math.floor(diffInDays / 30)} months ago`
   }
 
   if (loading) {
     return (
-      <div className={`space-y-4 ${className}`}>
-        {[1, 2, 3].map(i => (
-          <Card key={i} className="animate-pulse">
-            <CardContent className="p-4">
-              <div className="h-4 bg-gray-200 rounded mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded mb-2"></div>
-              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <Card>
+        <CardContent className="p-6 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading saved searches...</p>
+        </CardContent>
+      </Card>
     )
   }
 
   if (savedSearches.length === 0) {
     return (
-      <Card className={className}>
-        <CardContent className="p-8 text-center">
+      <Card>
+        <CardContent className="p-12 text-center">
           <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No saved searches</h3>
           <p className="text-gray-600">
-            Save your searches to quickly find new opportunities and get alerts when new matches are found.
+            Save your searches to quickly access them later and get alerts for new results.
           </p>
         </CardContent>
       </Card>
@@ -129,80 +148,79 @@ export function SavedSearches({ userId, onSearchExecute, className = '' }: Saved
   }
 
   return (
-    <div className={`space-y-4 ${className}`}>
-      {savedSearches.map((search) => {
-        const IconComponent = getSearchIcon(search.search_type)
-        
-        return (
-          <Card key={search.id} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <IconComponent className="h-4 w-4 text-blue-600" />
-                    <h3 className="font-medium text-gray-900">{search.name}</h3>
-                    <Badge variant="outline" className="text-xs capitalize">
-                      {search.search_type}
+    <div className="space-y-4">
+      {savedSearches.map((search) => (
+        <Card key={search.id} className="hover:shadow-md transition-shadow">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <h3 className="text-lg font-semibold text-gray-900">{search.name}</h3>
+                  <Badge variant="outline" className="capitalize">
+                    {search.search_type}
+                  </Badge>
+                  {search.is_alert_enabled && (
+                    <Badge variant="default" className="bg-green-100 text-green-800">
+                      <Bell className="w-3 h-3 mr-1" />
+                      Alert On
                     </Badge>
-                    {search.is_alert_enabled && (
-                      <Badge variant="default" className="text-xs bg-green-100 text-green-800">
-                        <Bell className="w-3 h-3 mr-1" />
-                        Alert On
-                      </Badge>
-                    )}
-                  </div>
-                  
-                  <p className="text-sm text-gray-600 mb-2">
-                    {formatCriteria(search.criteria, search.search_type)}
-                  </p>
-                  
-                  <div className="flex items-center space-x-4 text-xs text-gray-500">
-                    <div className="flex items-center">
-                      <Clock className="w-3 h-3 mr-1" />
-                      Created {new Date(search.created_at).toLocaleDateString()}
-                    </div>
-                    {search.last_alert_sent && (
-                      <div className="flex items-center">
-                        <Bell className="w-3 h-3 mr-1" />
-                        Last alert {new Date(search.last_alert_sent).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
                 
-                <div className="flex items-center space-x-2 ml-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleExecuteSearch(search)}
-                    title="Run search"
-                  >
-                    <Play className="w-4 h-4" />
-                  </Button>
-                  
-                  <div className="flex items-center space-x-1">
-                    <Switch
-                      checked={search.is_alert_enabled}
-                      onCheckedChange={(checked) => handleToggleAlert(search.id, checked)}
-                      title="Toggle alerts"
-                    />
+                <p className="text-gray-600 mb-3">
+                  {formatSearchCriteria(search.criteria, search.search_type)}
+                </p>
+                
+                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <Calendar className="w-4 h-4 mr-1" />
+                    Created {getTimeAgo(search.created_at)}
                   </div>
-                  
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteSearch(search.id)}
-                    title="Delete search"
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  {search.is_alert_enabled && (
+                    <div className="flex items-center">
+                      <Filter className="w-4 h-4 mr-1" />
+                      {search.alert_frequency} alerts
+                    </div>
+                  )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )
-      })}
+              
+              <div className="flex items-center space-x-2 ml-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExecuteSearch(search)}
+                >
+                  <Play className="w-4 h-4 mr-2" />
+                  Run Search
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleToggleAlert(search.id, search.is_alert_enabled)}
+                  className={search.is_alert_enabled ? 'text-green-600' : 'text-gray-400'}
+                >
+                  {search.is_alert_enabled ? (
+                    <Bell className="w-4 h-4" />
+                  ) : (
+                    <BellOff className="w-4 h-4" />
+                  )}
+                </Button>
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDeleteSearch(search.id)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }
