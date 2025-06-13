@@ -66,6 +66,7 @@ export const searchService = {
   // Job search functions
   async searchJobs(filters: JobSearchFilters): Promise<SearchResult<any>> {
     const { data, error } = await supabase.rpc('search_jobs', {
+      p_search_type: 'jobs',
       p_query: filters.query || null,
       p_category: filters.category || null,
       p_job_type: filters.jobType || null,
