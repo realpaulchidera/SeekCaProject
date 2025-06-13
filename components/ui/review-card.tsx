@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -9,79 +9,58 @@ import {
   Star, 
   ThumbsUp, 
   ThumbsDown, 
-  MessageSquare, 
+  MessageSquare,
   Calendar,
   Award,
-  CheckCircle,
-  X
+  CheckCircle
 } from 'lucide-react'
-import { ReviewWithDetails } from '@/lib/reviews'
-import { reviewService } from '@/lib/reviews'
+import { ReviewWithDetails, reviewService } from '@/lib/reviews'
 
 interface ReviewCardProps {
   review: ReviewWithDetails
   currentUserId?: string
-  onVote?: (reviewId: string, isHelpful: boolean) => void
-  onRespond?: (reviewId: string) => void
+  showJobTitle?: boolean
   className?: string
 }
 
 export function ReviewCard({ 
   review, 
   currentUserId, 
-  onVote, 
-  onRespond,
-  className = '' 
+  showJobTitle = true,
+  className 
 }: ReviewCardProps) {
   const [userVote, setUserVote] = useState<boolean | null>(null)
+  const [helpfulCount, setHelpfulCount] = useState(review.helpful_count || 0)
   const [showResponse, setShowResponse] = useState(false)
-  const [responseText, setResponseText] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-
-  // Load user's vote on mount
-  useState(() => {
-    if (currentUserId) {
-      reviewService.getUserVote(review.review_id, currentUserId)
-        .then(vote => setUserVote(vote))
-        .catch(console.error)
-    }
-  })
 
   const handleVote = async (isHelpful: boolean) => {
-    if (!currentUserId || !onVote) return
-    
+    if (!currentUserId) return
+
     try {
       await reviewService.voteHelpful(review.review_id, currentUserId, isHelpful)
+      
+      // Update local state
+      if (userVote === null) {
+        setHelpfulCount(prev => isHelpful ? prev + 1 : prev)
+      } else if (userVote !== isHelpful) {
+        setHelpfulCount(prev => isHelpful ? prev + 1 : prev - 1)
+      }
+      
       setUserVote(isHelpful)
-      onVote(review.review_id, isHelpful)
     } catch (error) {
-      console.error('Error voting:', error)
-    }
-  }
-
-  const handleSubmitResponse = async () => {
-    if (!currentUserId || !responseText.trim()) return
-    
-    setSubmitting(true)
-    try {
-      await reviewService.createReviewResponse(review.review_id, currentUserId, responseText)
-      setShowResponse(false)
-      setResponseText('')
-      if (onRespond) onRespond(review.review_id)
-    } catch (error) {
-      console.error('Error submitting response:', error)
-    } finally {
-      setSubmitting(false)
+      console.error('Error voting on review:', error)
     }
   }
 
   const renderStars = (rating: number, size = 'sm') => {
+    const starSize = size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
+    
     return (
-      <div className="flex items-center space-x-1">
+      <div className="flex space-x-1">
         {[1, 2, 3, 4, 5].map((star) => (
           <Star
             key={star}
-            className={`${size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'} ${
+            className={`${starSize} ${
               star <= rating ? 'text-yellow-400 fill-current' : 'text-gray-300'
             }`}
           />
@@ -98,191 +77,168 @@ export function ReviewCard({
     })
   }
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase()
+  }
+
   return (
-    <Card className={`${className}`}>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex items-start space-x-4">
-            <Avatar className="h-12 w-12">
-              <AvatarImage src={review.reviewer_avatar} alt={review.reviewer_name} />
-              <AvatarFallback className="bg-blue-100 text-blue-700">
-                {review.reviewer_name?.[0] || 'U'}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <div className="flex items-center space-x-2 mb-1">
-                <h3 className="font-semibold text-gray-900">
-                  {review.reviewer_name || 'Anonymous'}
-                </h3>
-                {review.reviewer_company && (
-                  <Badge variant="outline" className="text-xs">
-                    {review.reviewer_company}
-                  </Badge>
+    <Card className={className}>
+      <CardContent className="p-6">
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-start space-x-4">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src={review.reviewer_avatar} alt={review.reviewer_name} />
+                <AvatarFallback className="bg-blue-100 text-blue-700">
+                  {getInitials(review.reviewer_name || 'Anonymous')}
+                </AvatarFallback>
+              </Avatar>
+              
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-1">
+                  <h4 className="font-semibold text-gray-900">
+                    {review.reviewer_name || 'Anonymous'}
+                  </h4>
+                  {review.reviewer_company && (
+                    <span className="text-sm text-gray-600">
+                      at {review.reviewer_company}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex items-center space-x-3 mb-2">
+                  {renderStars(review.rating)}
+                  <span className="text-sm font-medium">{review.rating}/5</span>
+                  <div className="flex items-center text-xs text-gray-500">
+                    <Calendar className="w-3 h-3 mr-1" />
+                    {formatDate(review.created_at)}
+                  </div>
+                </div>
+
+                {showJobTitle && review.job_title && (
+                  <p className="text-sm text-blue-600 mb-2">
+                    Project: {review.job_title}
+                  </p>
                 )}
               </div>
+            </div>
+
+            {review.would_recommend && (
+              <Badge variant="default" className="bg-green-100 text-green-800">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Recommends
+              </Badge>
+            )}
+          </div>
+
+          {/* Review Title */}
+          {review.title && (
+            <h3 className="text-lg font-semibold text-gray-900">
+              {review.title}
+            </h3>
+          )}
+
+          {/* Review Content */}
+          <p className="text-gray-700 leading-relaxed">
+            {review.comment}
+          </p>
+
+          {/* Detailed Ratings */}
+          {(review.skills_rating || review.communication_rating || 
+            review.timeliness_rating || review.professionalism_rating) && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+              {review.skills_rating && (
+                <div className="text-center">
+                  <p className="text-xs text-gray-600 mb-1">Skills</p>
+                  {renderStars(review.skills_rating, 'sm')}
+                  <p className="text-xs font-medium mt-1">{review.skills_rating}/5</p>
+                </div>
+              )}
+              {review.communication_rating && (
+                <div className="text-center">
+                  <p className="text-xs text-gray-600 mb-1">Communication</p>
+                  {renderStars(review.communication_rating, 'sm')}
+                  <p className="text-xs font-medium mt-1">{review.communication_rating}/5</p>
+                </div>
+              )}
+              {review.timeliness_rating && (
+                <div className="text-center">
+                  <p className="text-xs text-gray-600 mb-1">Timeliness</p>
+                  {renderStars(review.timeliness_rating, 'sm')}
+                  <p className="text-xs font-medium mt-1">{review.timeliness_rating}/5</p>
+                </div>
+              )}
+              {review.professionalism_rating && (
+                <div className="text-center">
+                  <p className="text-xs text-gray-600 mb-1">Professionalism</p>
+                  {renderStars(review.professionalism_rating, 'sm')}
+                  <p className="text-xs font-medium mt-1">{review.professionalism_rating}/5</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Professional Response */}
+          {review.response_text && (
+            <div className="border-l-4 border-blue-500 pl-4 bg-blue-50 p-4 rounded-r-lg">
               <div className="flex items-center space-x-2 mb-2">
-                {renderStars(review.rating)}
-                <span className="text-sm font-medium">{review.rating}/5</span>
+                <MessageSquare className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">
+                  Response from Professional
+                </span>
+                <span className="text-xs text-blue-600">
+                  {formatDate(review.response_created_at!)}
+                </span>
               </div>
-              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                <Calendar className="h-4 w-4" />
-                <span>{formatDate(review.created_at)}</span>
-                {review.job_title && (
-                  <>
-                    <span>•</span>
-                    <span>Project: {review.job_title}</span>
-                  </>
-                )}
-              </div>
+              <p className="text-blue-800 text-sm">
+                {review.response_text}
+              </p>
             </div>
-          </div>
-          
-          {review.would_recommend && (
-            <Badge variant="default" className="bg-green-100 text-green-800">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Recommends
-            </Badge>
           )}
-        </div>
-      </CardHeader>
 
-      <CardContent className="space-y-4">
-        {/* Review Title */}
-        {review.title && (
-          <h4 className="font-medium text-gray-900">{review.title}</h4>
-        )}
-
-        {/* Review Comment */}
-        {review.comment && (
-          <p className="text-gray-700 leading-relaxed">{review.comment}</p>
-        )}
-
-        {/* Category Ratings */}
-        {(review.skills_rating || review.communication_rating || 
-          review.timeliness_rating || review.professionalism_rating) && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-            {review.skills_rating && (
-              <div className="text-center">
-                <div className="text-sm font-medium text-gray-600 mb-1">Skills</div>
-                {renderStars(review.skills_rating)}
-              </div>
-            )}
-            {review.communication_rating && (
-              <div className="text-center">
-                <div className="text-sm font-medium text-gray-600 mb-1">Communication</div>
-                {renderStars(review.communication_rating)}
-              </div>
-            )}
-            {review.timeliness_rating && (
-              <div className="text-center">
-                <div className="text-sm font-medium text-gray-600 mb-1">Timeliness</div>
-                {renderStars(review.timeliness_rating)}
-              </div>
-            )}
-            {review.professionalism_rating && (
-              <div className="text-center">
-                <div className="text-sm font-medium text-gray-600 mb-1">Professionalism</div>
-                {renderStars(review.professionalism_rating)}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Professional Response */}
-        {review.response_text && (
-          <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400">
-            <div className="flex items-center space-x-2 mb-2">
-              <MessageSquare className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">Response from Professional</span>
-              <span className="text-xs text-blue-600">
-                {formatDate(review.response_created_at!)}
-              </span>
+          {/* Actions */}
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <div className="flex items-center space-x-4">
+              {currentUserId && (
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleVote(true)}
+                    className={`${
+                      userVote === true ? 'text-green-600 bg-green-50' : 'text-gray-600'
+                    }`}
+                  >
+                    <ThumbsUp className="w-4 h-4 mr-1" />
+                    Helpful
+                  </Button>
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleVote(false)}
+                    className={`${
+                      userVote === false ? 'text-red-600 bg-red-50' : 'text-gray-600'
+                    }`}
+                  >
+                    <ThumbsDown className="w-4 h-4 mr-1" />
+                    Not helpful
+                  </Button>
+                </div>
+              )}
+              
+              {helpfulCount > 0 && (
+                <span className="text-sm text-gray-600">
+                  {helpfulCount} found this helpful
+                </span>
+              )}
             </div>
-            <p className="text-blue-800 text-sm">{review.response_text}</p>
-          </div>
-        )}
 
-        {/* Response Form */}
-        {showResponse && (
-          <div className="border-t pt-4">
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-gray-700">
-                Respond to this review
-              </label>
-              <textarea
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Thank the reviewer and provide any additional context..."
-                value={responseText}
-                onChange={(e) => setResponseText(e.target.value)}
-              />
-              <div className="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowResponse(false)}
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSubmitResponse}
-                  disabled={!responseText.trim() || submitting}
-                >
-                  {submitting ? 'Submitting...' : 'Submit Response'}
-                </Button>
-              </div>
+            <div className="text-xs text-gray-500">
+              Review #{review.review_id.slice(-8)}
             </div>
           </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex items-center justify-between pt-2 border-t">
-          <div className="flex items-center space-x-4">
-            {/* Helpful Votes */}
-            {currentUserId && (
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-600">Helpful?</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleVote(true)}
-                  className={`${userVote === true ? 'text-green-600 bg-green-50' : 'text-gray-600'}`}
-                >
-                  <ThumbsUp className="h-4 w-4 mr-1" />
-                  Yes
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleVote(false)}
-                  className={`${userVote === false ? 'text-red-600 bg-red-50' : 'text-gray-600'}`}
-                >
-                  <ThumbsDown className="h-4 w-4 mr-1" />
-                  No
-                </Button>
-              </div>
-            )}
-            
-            {review.helpful_count > 0 && (
-              <span className="text-sm text-gray-600">
-                {review.helpful_count} found this helpful
-              </span>
-            )}
-          </div>
-
-          {/* Response Button */}
-          {currentUserId && !review.response_text && onRespond && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowResponse(true)}
-            >
-              <MessageSquare className="h-4 w-4 mr-2" />
-              Respond
-            </Button>
-          )}
         </div>
       </CardContent>
     </Card>
