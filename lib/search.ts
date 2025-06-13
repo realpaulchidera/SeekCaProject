@@ -94,6 +94,7 @@ export const searchService = {
   // Professional search functions
   async searchProfessionals(filters: ProfessionalSearchFilters): Promise<SearchResult<any>> {
     const { data, error } = await supabase.rpc('search_professionals', {
+      p_search_type: 'professionals',
       p_query: filters.query || null,
       p_skills: filters.skills || null,
       p_location: filters.location || null,
