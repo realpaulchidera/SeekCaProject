@@ -113,12 +113,31 @@ export default function Home() {
           {/* Additional trust indicators */}
           <div className="mt-16 text-center">
             <p className="text-gray-600 mb-8">Trusted by leading companies and professionals worldwide</p>
-            <div className="flex flex-wrap justify-center items-center gap-8 opacity-60">
-              <div className="text-2xl font-bold text-gray-400">TechCorp</div>
-              <div className="text-2xl font-bold text-gray-400">BuildPro</div>
-              <div className="text-2xl font-bold text-gray-400">DesignStudio</div>
-              <div className="text-2xl font-bold text-gray-400">EngineerCo</div>
-              <div className="text-2xl font-bold text-gray-400">ProjectMax</div>
+            <div className="flex flex-wrap justify-center items-center gap-12 opacity-70">
+              {/* Bolt.new logo */}
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                </div>
+                <span className="text-xl font-bold text-gray-600">bolt.new</span>
+              </div>
+              
+              {/* Supabase logo */}
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M21.362 9.354H12V.396a.396.396 0 0 0-.716-.233L2.203 12.424l-.401.562a1.04 1.04 0 0 0 .836 1.659H12v8.959a.396.396 0 0 0 .716.233l9.081-12.261.401-.562a1.04 1.04 0 0 0-.836-1.66z"/>
+                  </svg>
+                </div>
+                <span className="text-xl font-bold text-gray-600">Supabase</span>
+              </div>
+              
+              {/* Additional tech companies */}
+              <div className="text-xl font-semibold text-gray-500">Vercel</div>
+              <div className="text-xl font-semibold text-gray-500">Next.js</div>
+              <div className="text-xl font-semibold text-gray-500">Tailwind</div>
             </div>
           </div>
         </div>
